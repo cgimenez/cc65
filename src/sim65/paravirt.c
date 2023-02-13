@@ -48,6 +48,8 @@
 #else
 /* Anyone else */
 #  include <unistd.h>
+#  include <sys/time.h>
+#  include <time.h>
 #endif
 #ifndef S_IREAD
 #  define S_IREAD  S_IRUSR
@@ -293,8 +295,55 @@ static void PVWrite (CPURegs* Regs)
 }
 
 
+static void PVClockGetTime (CPURegs* Regs)
+{
+#include <stdio.h>
+#ifndef _WIN32
+    unsigned char ClockID;
+    unsigned int TimeSpec;
+    struct timespec now;
+    int res;
+
+    TimeSpec = GetAX (Regs);
+    ClockID = PopParam (1);
+
+    res = clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+    if(res == 0) {
+        MemWriteByte(TimeSpec, now.tv_sec & 0xFF);
+        MemWriteByte(TimeSpec+1, (now.tv_sec >> 8) & 0xFF);
+        MemWriteByte(TimeSpec+2, (now.tv_sec >> 16) & 0xFF);
+        MemWriteByte(TimeSpec+3, (now.tv_sec >> 24) & 0xFF);
+        MemWriteByte(TimeSpec+4, now.tv_nsec & 0xFF);
+        MemWriteByte(TimeSpec+5, (now.tv_nsec >> 8) & 0xFF);
+        MemWriteByte(TimeSpec+6, (now.tv_nsec >> 16) & 0xFF);
+        MemWriteByte(TimeSpec+7, (now.tv_nsec >> 24) & 0xFF);
+    }
+    SetAX (Regs, res);
+#else
+    SetAX (Regs, 0);
+#endif
+}
+
+
+static void PVKbhit (CPURegs* Regs)
+{
+#ifndef _WIN32
+    struct timeval tv;
+    fd_set fds;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds); //STDIN_FILENO is 0
+    select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+    SetAX (Regs, FD_ISSET(STDIN_FILENO, &fds));
+#else
+    SetAX (Regs, 0);
+#endif
+}
 
 static const PVFunc Hooks[] = {
+    PVClockGetTime,
+    PVKbhit,
     PVOpen,
     PVClose,
     PVRead,
